@@ -123,11 +123,12 @@ bool isSolvable(State *state){
     }
 }
 
+/* ------------------------- Random generators ------------------------- */
 State* randomStateGenerator(){
     random_device rd{};
     mt19937 mt{rd()};
     static uniform_int_distribution<int> dist;
-    dist.param(uniform_int_distribution<int>::param_type(0, 15));
+    dist.param(uniform_int_distribution<int>::param_type(0, 14));
     Board board = 0x0000000000000000ULL;
     auto* initialState = new State(board, 0, 0, -1, nullptr);
     unordered_set<int> added;
@@ -162,9 +163,11 @@ State* randomStateFromGoalGenerator(int k){
     return initialState;
 }
 
+/* --------------------------------------------------------------*/
+
 // prints the solution
 void printSolution(State* state, long visited, bool print_sol, short last_move, ::clock_t start){
-    cout << (double) (::clock() - start) / CLOCKS_PER_SEC << endl;
+    cout << "[" << (double) (::clock() - start) / CLOCKS_PER_SEC <<"s]" <<endl;
     State* solution = state;
     unsigned int moves = 0;
     if(last_move != -1) moves++;
@@ -200,7 +203,7 @@ unsigned int manhattanHeuristic(State* board){
     return f_cost + board->g_cost;
 }
 
-// counts of linear conflicts + manhattandistance
+// counts of linear conflicts*2 + manhattandistance
 unsigned int linearConflict(State *board){
     unsigned int conflicts = 0;
     unsigned int distance = 0;
@@ -229,24 +232,20 @@ unsigned int linearConflict(State *board){
 
 /* --------------------------------------------------------------*/
 
-
-
 struct Hash{
     size_t operator()(const State* state) const{
         return hash<Board>()(state->board);
     }
-};
+};  // closedlist hashing
 
 struct Equal{
     bool operator()(const State* obj1, const State* obj2) const{
         return obj1->board == obj2->board;
     }
-};
-
-
+};  // closedlist compare function
 
 // A* algorithm to find the best solution from initialState to goal
-void AstarSearch(State* initialState, Board goal, char heuristics, bool print_sol){
+void AstarSearch(State* initialState, Board goal, bool print_sol){
     if(!isSolvable(initialState)) {
         cout << "Not Solvable!" << endl;
         return;
@@ -282,8 +281,7 @@ void AstarSearch(State* initialState, Board goal, char heuristics, bool print_so
                     printSolution(q, visited, print_sol, move, starttime);
                     return;
                 }
-                if(heuristics == 1) successor->f_cost = linearConflict(successor);
-                else successor->f_cost = manhattanHeuristic(successor);
+                successor->f_cost = linearConflict(successor);
                 auto search = closedList.find(successor);
                 if (search == closedList.end()) {   // not checked yet
                     closedList.insert(successor);
@@ -302,5 +300,5 @@ int main() {
     Board goalBoard = 0x123456789abcdef0ULL;
     auto* state = randomStateGenerator();
     state->printBoard();
-    AstarSearch(state, goalBoard, 1, false);
+    AstarSearch(state, goalBoard, false);
 }
