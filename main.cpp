@@ -13,6 +13,7 @@ using namespace std;
 
 int boardWidth = 4; // 15-puzzle is 4x4 and 8-puzzle is 3x3
 int board_len = boardWidth * boardWidth;
+double avgTime = 0.0;
 
 // says if move [ 0 - 3 ] is possible from position [ 0 - 15 ]
 static const int possibleMoves[4][16] = {
@@ -26,9 +27,9 @@ const short gobackmove[] = {1, 0, 3, 2};    // oposite move to move [ 0 - 3 ]
 class State{
 public:
     Board board;
-    unsigned int g_cost;
-    unsigned int f_cost;
-    short parentMove;
+    unsigned short int g_cost;
+    unsigned short int f_cost;
+    char parentMove;
     State* parent;
 
     void setTile(int idx, int value);
@@ -36,7 +37,7 @@ public:
     void move(short mv, int blankspot);
     void printBoard();
 
-    State(Board board, unsigned int g, unsigned int f, short parentMove, State *parent){
+    State(Board board, unsigned short int g, unsigned short int f, char parentMove, State *parent){
         this->board = board;
         this->f_cost = f;
         this->g_cost = g;
@@ -136,7 +137,7 @@ State* randomStateGenerator(){
         int idx;
         do{
             idx = dist(mt);
-        } while (added.contains(idx));
+        } while (added.find(idx)!=added.end());
         added.insert(idx);
         initialState->setTile(idx, i);
     }
@@ -153,7 +154,7 @@ State* randomStateFromGoalGenerator(int k){
     int prev = -1;
     for(int i =0; i<k;i++){
         int blank = getBlankPos(initialState);
-        short move;
+        char move;
         do{
             move = dist(mt);
         } while (move==prev && !possibleMoves[move][blank]);
@@ -166,8 +167,10 @@ State* randomStateFromGoalGenerator(int k){
 /* --------------------------------------------------------------*/
 
 // prints the solution
-void printSolution(State* state, long visited, bool print_sol, short last_move, ::clock_t start){
-    cout << "[" << (double) (::clock() - start) / CLOCKS_PER_SEC <<"s]" <<endl;
+int* printSolution(State* state, long visited, bool print_sol, short last_move, ::clock_t start){
+    double time = (double) (::clock() - start) / CLOCKS_PER_SEC;
+    avgTime += time;
+    cout << "[" << time <<"s]" <<endl;
     State* solution = state;
     unsigned int moves = 0;
     if(last_move != -1) moves++;
@@ -189,6 +192,7 @@ void printSolution(State* state, long visited, bool print_sol, short last_move, 
         cout<< endl;
     }
     cout << "Moves: " << moves << endl;
+    return new int[]{static_cast<int>(moves), static_cast<int>(visited) };
 }
 
 /* ------------------------- HEURISTICS ------------------------- */
@@ -204,9 +208,9 @@ unsigned int manhattanHeuristic(State* board){
 }
 
 // counts of linear conflicts*2 + manhattandistance
-unsigned int linearConflict(State *board){
-    unsigned int conflicts = 0;
-    unsigned int distance = 0;
+unsigned short int linearConflict(State *board){
+    unsigned short int conflicts = 0;
+    unsigned short int distance = 0;
     for(int i = 0; i<board_len; i++) {
         int tj = board->getTile(i);
         int row = (i / boardWidth);
@@ -245,10 +249,10 @@ struct Equal{
 };  // closedlist compare function
 
 // A* algorithm to find the best solution from initialState to goal
-void AstarSearch(State* initialState, Board goal, bool print_sol){
+int* AstarSearch(State* initialState, Board goal, bool print_sol){
     if(!isSolvable(initialState)) {
         cout << "Not Solvable!" << endl;
-        return;
+        return nullptr;
     }  // Not solvable
     clock_t starttime = ::clock();
     cout << "Solving..." << endl ;
@@ -267,7 +271,7 @@ void AstarSearch(State* initialState, Board goal, bool print_sol){
         openList.pop();
         closedList.insert(q);
         ++visited;
-        if(q->board == goal) { printSolution(q, visited, print_sol, -1, starttime);return;}
+        if(q->board == goal) { return printSolution(q, visited, print_sol, -1, starttime);}
         int blankPos = getBlankPos(q);
 
         //-------------------------- generate successors --------------------------
@@ -278,10 +282,12 @@ void AstarSearch(State* initialState, Board goal, bool print_sol){
                 successor->move(move, blankPos);
                 if(successor->board == goal){   // successor == goal
                     ++visited;
-                    printSolution(q, visited, print_sol, move, starttime);
-                    return;
+                    closedList.clear();
+                    return printSolution(q, visited, print_sol, move, starttime);
                 }
+
                 successor->f_cost = linearConflict(successor);
+
                 auto search = closedList.find(successor);
                 if (search == closedList.end()) {   // not checked yet
                     closedList.insert(successor);
@@ -294,11 +300,12 @@ void AstarSearch(State* initialState, Board goal, bool print_sol){
             }
         }
     }
+    return nullptr;
 }
 
 int main() {
     Board goalBoard = 0x123456789abcdef0ULL;
-    auto* state = randomStateGenerator();
+    auto *state = randomStateGenerator();
     state->printBoard();
-    AstarSearch(state, goalBoard, false);
+    AstarSearch(state, goalBoard, true);
 }
