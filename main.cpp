@@ -95,8 +95,8 @@ void State::move(short mv, int blankspot){
 // Function calculates count of inversions in given state.
 int getInversionCount(State *state){
     int inv_count = 0;
-    for(int i = 0; i<boardWidth*boardWidth; i++){
-        for(int j = i+1; j<=boardWidth*boardWidth; j++){
+    for(int i = 0; i<board_len-1; i++){
+        for(int j = i+1; j<board_len; j++){
             if(state->getTile(j)!=0 && state->getTile(i)!=0 && state->getTile(i) > state->getTile(j))
                 inv_count++;
         }
@@ -163,7 +163,8 @@ State* randomStateFromGoalGenerator(int k){
 }
 
 // prints the solution
-void solutionFound(State* state, long visited, bool print_sol, short last_move){
+void printSolution(State* state, long visited, bool print_sol, short last_move, ::clock_t start){
+    cout << (double) (::clock() - start) / CLOCKS_PER_SEC << endl;
     State* solution = state;
     unsigned int moves = 0;
     if(last_move != -1) moves++;
@@ -203,35 +204,27 @@ unsigned int manhattanHeuristic(State* board){
 unsigned int linearConflict(State *board){
     unsigned int conflicts = 0;
     unsigned int distance = 0;
-    //row conflicts
-    for(int row = 0; row<board_len; row+=boardWidth){
-        for(int tj = row; tj<row+boardWidth - 1; tj++){
-            int val_tj = board->getTile(tj);
-            if(val_tj!=0) distance += abs(row - floor((val_tj-1)/boardWidth)) + abs((tj%boardWidth) - ((val_tj-1)%boardWidth));
-            if(val_tj<=row+boardWidth && val_tj > row) {    // tj goal in the same row
-                for (size_t tk = tj + 1; tk < row + boardWidth; tk++) {
-                    int val_tk = board->getTile(tk);
-                    if(val_tk<=row+boardWidth && val_tk > row && val_tk < val_tj){ // tk goal in the same row
-                        conflicts++;
-                    }
-                }
+    for(int i = 0; i<board_len; i++) {
+        int tj = board->getTile(i);
+        int row = (i / boardWidth);
+        int column = (i % boardWidth);
+        // calculate manhattan distance
+        if(tj!=0) {
+            distance += (int) abs(row - floor((tj - 1) / boardWidth)) + abs(column - (tj - 1) % boardWidth);
+            // row conflicts
+            for (int tk_idx = i + 1; tk_idx < (row + 1) * boardWidth; tk_idx++) {
+                int tk = board->getTile(tk_idx);
+                if (tk != 0 && tj > tk && floor((tk - 1) / boardWidth) == row) { conflicts++; }
+            }
+            //column conflicts
+            for (int tk_idx = i + boardWidth; tk_idx < board_len; tk_idx += boardWidth) {
+                int tk = board->getTile(tk_idx);
+                if (tk != 0 && tj > tk && (tk - 1) % boardWidth == column) { conflicts++; }
             }
         }
-    }
-    // column conflicts
-    for(size_t column = 0; column<boardWidth; column++){
-        for(size_t tj = column; tj<board_len - boardWidth; tj+=boardWidth){
-            int val_tj = board->getTile(tj);
-            if( val_tj != 0 && val_tj%boardWidth == (column+1)%boardWidth) {
-                for (size_t tk = column + boardWidth; tk < board_len; tk += boardWidth) {
-                    int val_tk = board->getTile(tk);
-                    if(val_tk != 0 && val_tk%boardWidth == (column+1)%boardWidth && val_tk < val_tj) conflicts++;
-                }
-            }
 
-        }
     }
-    return 2*conflicts + distance;
+    return 2*conflicts + distance + board->g_cost;
 }
 
 /* --------------------------------------------------------------*/
@@ -258,6 +251,7 @@ void AstarSearch(State* initialState, Board goal, char heuristics, bool print_so
         cout << "Not Solvable!" << endl;
         return;
     }  // Not solvable
+    clock_t starttime = ::clock();
     cout << "Solving..." << endl ;
     auto cmp = [](State* left, State* right){return left->f_cost > right->f_cost;};
     long visited = 0;
@@ -274,7 +268,7 @@ void AstarSearch(State* initialState, Board goal, char heuristics, bool print_so
         openList.pop();
         closedList.insert(q);
         ++visited;
-        if(q->board == goal) {solutionFound(q, visited, print_sol, -1);return;}
+        if(q->board == goal) { printSolution(q, visited, print_sol, -1, starttime);return;}
         int blankPos = getBlankPos(q);
 
         //-------------------------- generate successors --------------------------
@@ -285,7 +279,7 @@ void AstarSearch(State* initialState, Board goal, char heuristics, bool print_so
                 successor->move(move, blankPos);
                 if(successor->board == goal){   // successor == goal
                     ++visited;
-                    solutionFound(q, visited, print_sol, move);
+                    printSolution(q, visited, print_sol, move, starttime);
                     return;
                 }
                 if(heuristics == 1) successor->f_cost = linearConflict(successor);
@@ -308,9 +302,5 @@ int main() {
     Board goalBoard = 0x123456789abcdef0ULL;
     auto* state = randomStateGenerator();
     state->printBoard();
-    cout << " Linear Conflict: " << endl;
     AstarSearch(state, goalBoard, 1, false);
-    cout << " Manhattan: " << endl;
-    AstarSearch(state, goalBoard, 0, true);
-
 }
