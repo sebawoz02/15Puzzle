@@ -137,6 +137,10 @@ int AstarSearch(State* initialState, Board goal){
         openList.pop();
         closedList.insert(q);
         visited++;
+        if(q->board == goal){
+            solutionFound(q , visited);
+            return 0;
+        }
         // generate successors
         int blankPos = getBlankPos(q);
         if(blankPos == -1){
@@ -144,7 +148,7 @@ int AstarSearch(State* initialState, Board goal){
         }
         //-------------------------- 1 - move blank spot higher --------------------------
         if(blankPos >= boardWidth && q->parentMove != 'd'){
-            auto* topSuccessor = new State(q->board, q->g_cost + 1, 0, 't', q);
+            auto* topSuccessor = new State(q->board, q->g_cost + 1, 0, 'g', q);
             int val = topSuccessor->getTile(blankPos-boardWidth);
             topSuccessor->setTile(blankPos, val);
             topSuccessor->setTile(blankPos-boardWidth, 0x0000);
@@ -167,7 +171,7 @@ int AstarSearch(State* initialState, Board goal){
 
         }
         // -------------------------- 2 - move blank spot lower --------------------------
-        if(blankPos < (boardWidth*boardWidth-boardWidth) && q->parentMove!='t'){
+        if(blankPos < (boardWidth*boardWidth-boardWidth) && q->parentMove!='g'){
             auto* lowSuccessor = new State(q->board, q->g_cost + 1, 0, 'd', q);
             int val = lowSuccessor->getTile(blankPos+boardWidth);
             lowSuccessor->setTile(blankPos, val);
@@ -245,7 +249,7 @@ int AstarSearch(State* initialState, Board goal){
 
 int main() {
     Board goalBoard = 0x123456780ULL;
-    Board randomState = 0x1235468780ULL;
+    Board randomState = 0x431286750ULL;
     auto* state = new State(randomState, 0, 0, '\0', nullptr);
     return AstarSearch(state, goalBoard);
 }
