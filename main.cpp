@@ -10,7 +10,7 @@
 
 using namespace std;
 
-int boardWidth = 3;
+int boardWidth = 4;
 
 
 class State{
@@ -18,13 +18,14 @@ public:
     Board board;
     unsigned int g_cost;
     unsigned int f_cost;
-    char parentMove;
+    short parentMove;
     State* parent;
 
     void setTile(int idx, int value);
     int getTile(int idx) const;
+    void move(short mv, int blankspot);
 
-    State(Board board, unsigned int g, unsigned int f, char parentMove, State *parent){
+    State(Board board, unsigned int g, unsigned int f, short parentMove, State *parent){
         this->board = board;
         this->f_cost = f;
         this->g_cost = g;
@@ -43,6 +44,35 @@ int State::getTile(int idx) const {
 void State::setTile(int idx, int value){
     this->board &= ~(MASK << ((boardWidth*boardWidth - 1 - idx) * BITS_PER_TILE));
     this->board |= static_cast<Board>(value) << ((boardWidth*boardWidth - 1 - idx) * BITS_PER_TILE);
+}
+
+// Moves the blank spot
+// 0 - move up
+// 1 - move down
+// 2 - move left
+// 3 - move right
+void State::move(short mv, int blankspot){
+    if(mv == 0){
+        int val = getTile(blankspot-boardWidth);
+        setTile(blankspot, val);
+        setTile(blankspot - boardWidth, 0x0000);
+    }
+    else if(mv == 1){
+        int val = getTile(blankspot+boardWidth);
+        setTile(blankspot, val);
+        setTile(blankspot+boardWidth, 0x0000);
+    }
+    else if(mv == 2){
+        int val = getTile(blankspot-1);
+        setTile(blankspot, val);
+        setTile(blankspot-1, 0x0000);
+    }
+    else if(mv == 3){
+        int val = getTile(blankspot+1);
+        setTile(blankspot, val);
+        setTile(blankspot+1, 0x0000);
+    }
+
 }
 
 // Function calculates count of inversions in given state.
@@ -76,8 +106,8 @@ bool isSolvable(State *state){
     }
 }
 
-
-unsigned char manhattanHeuristic(State* board){
+// manhattan distance
+unsigned int manhattanHeuristic(State* board){
     unsigned int f_cost = 0;
     for(int i = 0; i<boardWidth*boardWidth; i++){
         int dest = board->getTile(i);
@@ -111,6 +141,14 @@ struct Equal{
 };
 
 
+// says if move [ 0 - 3 ] is possible from position [ 0 - 15 ]
+static const int possibleMoves[4][16] = {
+        {0, 0, 0,0, 1,1,1,1, 1, 1, 1, 1, 1, 1, 1, 1},        //  move up
+        {1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, // move down
+        {0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1}, //move left
+        {1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0} //move right
+};
+const short gobackmove[] = {1, 0, 3, 2};    // oposite move to move [ 0 - 3 ]
 
 // A* algorithm to find the best solution from initialState to goal
 // returns -1 if not solvable, else 0
@@ -120,7 +158,7 @@ int AstarSearch(State* initialState, Board goal){
         return -1;
     }
     cout << "Solving..." << endl;
-    auto cmp = [](State* left, State* right){return left->f_cost < right->f_cost;};
+    auto cmp = [](State* left, State* right){return left->f_cost > right->f_cost;};
 
     long visited = 0;
     // open list for states to be checked
@@ -137,109 +175,38 @@ int AstarSearch(State* initialState, Board goal){
         openList.pop();
         closedList.insert(q);
         visited++;
-        if(q->board == goal){
-            solutionFound(q , visited);
+        if(q->board == goal) {
+            solutionFound(q, visited);
             return 0;
         }
-        // generate successors
         int blankPos = getBlankPos(q);
         if(blankPos == -1){
             return -1;
         }
-        //-------------------------- 1 - move blank spot higher --------------------------
-        if(blankPos >= boardWidth && q->parentMove != 'd'){
-            auto* topSuccessor = new State(q->board, q->g_cost + 1, 0, 'g', q);
-            int val = topSuccessor->getTile(blankPos-boardWidth);
-            topSuccessor->setTile(blankPos, val);
-            topSuccessor->setTile(blankPos-boardWidth, 0x0000);
-            if(topSuccessor->board == goal){
-                solutionFound(topSuccessor, visited);
-                return 0;
-            }
-            topSuccessor->f_cost = manhattanHeuristic(topSuccessor);
+        //-------------------------- generate successors --------------------------
+        for(short move=0;move<4;move++){
+            if(!possibleMoves[move][blankPos]) continue;   // move impossible
+            if(gobackmove[q->parentMove] != move){
+                auto* successor = new State(q->board, q->g_cost + 1, 0, move, q);
+                successor->move(move, blankPos);
 
-            auto search = closedList.find(topSuccessor);
-            if(search == closedList.end()){
-                closedList.insert(topSuccessor);
-                openList.push(topSuccessor);
-            }
-            else if(topSuccessor->f_cost < (*search)->f_cost){
-                openList.push(topSuccessor);
-                closedList.insert(topSuccessor);
-                closedList.erase(search);
-            } else delete topSuccessor;
+                if(successor->board == goal){
+                    solutionFound(q, visited+1);
+                    return 0;
+                }
 
-        }
-        // -------------------------- 2 - move blank spot lower --------------------------
-        if(blankPos < (boardWidth*boardWidth-boardWidth) && q->parentMove!='g'){
-            auto* lowSuccessor = new State(q->board, q->g_cost + 1, 0, 'd', q);
-            int val = lowSuccessor->getTile(blankPos+boardWidth);
-            lowSuccessor->setTile(blankPos, val);
-            lowSuccessor->setTile(blankPos+boardWidth, 0x0000);
-            if(lowSuccessor->board == goal){
-                solutionFound(lowSuccessor, visited);
-                return 0;
-            }
-            lowSuccessor->f_cost = manhattanHeuristic(lowSuccessor);
+                successor->f_cost = manhattanHeuristic(successor);
 
-            auto search = closedList.find(lowSuccessor);
-            if(search == closedList.end()){
-                closedList.insert(lowSuccessor);
-                openList.push(lowSuccessor);
+                auto search = closedList.find(successor);
+                if (search == closedList.end()) {
+                    closedList.insert(successor);
+                    openList.push(successor);
+                } else if (successor->f_cost < (*search)->f_cost) {
+                    openList.push(successor);
+                    closedList.insert(successor);
+                    closedList.erase(*search);
+                } else delete successor;
             }
-            else if(lowSuccessor->f_cost < (*search)->f_cost){
-                openList.push(lowSuccessor);
-                closedList.insert(lowSuccessor);
-                closedList.erase(search);
-            } else delete lowSuccessor;
-
-        }
-        // -------------------------- 3 - move blank spot left --------------------------
-        if(blankPos % boardWidth != 0 && q->parentMove != 'p'){
-            auto* leftSuccessor = new State(q->board, q->g_cost + 1, 0, 'l', q);
-            int val = leftSuccessor->getTile(blankPos-1);
-            leftSuccessor->setTile(blankPos, val);
-            leftSuccessor->setTile(blankPos-1, 0x0000);
-            if(leftSuccessor->board == goal){
-                solutionFound(leftSuccessor, visited);
-                return 0;
-            }
-            leftSuccessor->f_cost = manhattanHeuristic(leftSuccessor);
-
-            auto search = closedList.find(leftSuccessor);
-            if(search == closedList.end()){
-                closedList.insert(leftSuccessor);
-                openList.push(leftSuccessor);
-            }
-            else if(leftSuccessor->f_cost < (*search)->f_cost){
-                openList.push(leftSuccessor);
-                closedList.insert(leftSuccessor);
-                closedList.erase(search);
-            } else delete leftSuccessor;
-
-        }
-        // -------------------------- 4 - move blank spot right --------------------------
-        if(blankPos % boardWidth < boardWidth-1 && q->parentMove != 'l'){
-            auto* rightSuccessor = new State(q->board, q->g_cost + 1, 0, 'p', q);
-            int val = rightSuccessor->getTile(blankPos+1);
-            rightSuccessor->setTile(blankPos, val);
-            rightSuccessor->setTile(blankPos+1, 0x0000);
-            if(rightSuccessor->board == goal){
-                solutionFound(rightSuccessor, visited);
-                return 0;
-            }
-            rightSuccessor->f_cost = manhattanHeuristic(rightSuccessor);
-
-            auto search = closedList.find(rightSuccessor);
-            if(search == closedList.end()){
-                closedList.insert(rightSuccessor);
-                openList.push(rightSuccessor);
-            }
-            else if(rightSuccessor->f_cost < (*search)->f_cost){
-                openList.push(rightSuccessor);
-                closedList.insert(rightSuccessor);
-                closedList.erase(search);
-            } else delete rightSuccessor;
         }
     }
     return -1;
@@ -248,8 +215,9 @@ int AstarSearch(State* initialState, Board goal){
 
 
 int main() {
-    Board goalBoard = 0x123456780ULL;
-    Board randomState = 0x431286750ULL;
-    auto* state = new State(randomState, 0, 0, '\0', nullptr);
-    return AstarSearch(state, goalBoard);
+    Board goalBoard = 0x123456789abcdef0ULL;
+    Board randomState = 0x123457896bcdefa0ULL;
+    auto* state = new State(randomState, 0, 0, -1, nullptr);
+
+    AstarSearch(state, goalBoard);
 }
