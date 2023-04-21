@@ -3,15 +3,25 @@
 #include <iostream>
 #include <bits/stdc++.h>
 #include <cmath>
+#include <random>
 
 #define BITS_PER_TILE  4
-#define MASK 0x00000000000000000fULL
+#define MASK 0x00000000000000000fULL    // mask is used to reset bits, which alows to extract the value of the tile
 #define Board unsigned long long
 
 using namespace std;
 
-int boardWidth = 4;
+int boardWidth = 4; // 15-puzzle is 4x4 and 8-puzzle is 3x3
+int board_len = boardWidth * boardWidth;
 
+// says if move [ 0 - 3 ] is possible from position [ 0 - 15 ]
+static const int possibleMoves[4][16] = {
+        {0, 0, 0,0, 1,1,1,1, 1, 1, 1, 1, 1, 1, 1, 1},        //  move up
+        {1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, // move down
+        {0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1}, //move left
+        {1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0} //move right
+};
+const short gobackmove[] = {1, 0, 3, 2};    // oposite move to move [ 0 - 3 ]
 
 class State{
 public:
@@ -92,7 +102,7 @@ int getBlankPos(State *state){
     for(int i = boardWidth*boardWidth - 1; i>=0 ; --i){
         if(state->getTile(i) == 0) return i;
     }
-    return -1;
+    return 0;
 }
 
 // Function returns true if puzzle from given state is solvable
@@ -106,27 +116,105 @@ bool isSolvable(State *state){
     }
 }
 
-// manhattan distance
-unsigned int manhattanHeuristic(State* board){
-    unsigned int f_cost = 0;
-    for(int i = 0; i<boardWidth*boardWidth; i++){
-        int dest = board->getTile(i);
-        if(dest!=0){ f_cost += (int) abs(floor(i/boardWidth) - floor((dest-1)/boardWidth)) + abs((i%boardWidth) - ((dest-1)%boardWidth));}
+State* randomStateGenerator(){
+    random_device rd{};
+    mt19937 mt{rd()};
+    static uniform_int_distribution<int> dist;
+    dist.param(uniform_int_distribution<int>::param_type(0, 15));
+    Board board = 0x0000000000000000ULL;
+    auto* initialState = new State(board, 0, 0, -1, nullptr);
+    unordered_set<int> added;
+    for(int i = 1; i <=15; i++){
+        int idx;
+        do{
+            idx = dist(mt);
+        } while (added.contains(idx));
+        added.insert(idx);
+        initialState->setTile(idx, i);
     }
-    return f_cost + board->g_cost;
+    return initialState;
+}
+
+State* randomStateFromGoalGenerator(int k){
+    random_device rd{};
+    mt19937 mt{rd()};
+    static uniform_int_distribution<int> dist;
+    dist.param(uniform_int_distribution<int>::param_type(0, 3));
+    Board board = 0x123456789abcdef0ULL;
+    auto* initialState = new State(board, 0, 0, -1, nullptr);
+    int prev = -1;
+    for(int i =0; i<k;i++){
+        int blank = getBlankPos(initialState);
+        short move;
+        do{
+            move = dist(mt);
+        } while (move==prev && !possibleMoves[move][blank]);
+        prev = move;
+        initialState->move(move, blank);
+    }
+    return initialState;
 }
 
 // prints the solution
-void solutionFound(State* state, long visited){
-    cout << "Solution found! Visited states: " << visited << endl;
+void solutionFound(State* state, long long visited){
     State* solution = state;
     unsigned int moves = 0;
+    cout << "Visited states: " << visited << endl;
     while(solution->parent != nullptr){
         moves++;
         solution = solution->parent;
     }
     cout << "Moves: " << moves << endl;
 }
+
+/* ------------------------- HEURISTICS ------------------------- */
+
+// manhattan distance
+unsigned int manhattanHeuristic(State* board){
+    unsigned int f_cost = 0;
+    for(int i = 0; i<board_len; i++){
+        int dest = board->getTile(i);
+        if(dest!=0){ f_cost += (int) abs(floor(i/boardWidth) - floor((dest-1)/boardWidth)) + abs((i%boardWidth) - ((dest-1)%boardWidth));}
+    }
+    return f_cost + board->g_cost;
+}
+
+// counts of linear conflicts + manhattandistance
+unsigned int linearConflict(State *board){
+    unsigned int conflicts = 0;
+    //row conflicts
+    for(size_t row = 0; row<board_len; row+=boardWidth){
+        for(size_t tj = row; tj<row+boardWidth - 1; tj++){
+            int val_tj = board->getTile(tj);
+            if(val_tj<row+boardWidth && val_tj >= row) {    // tj goal in the same row
+                for (size_t tk = tj + 1; tk < row + boardWidth; tk++) {
+                    int val_tk = board->getTile(tk);
+                    if(val_tk<row+boardWidth && val_tk >= row && val_tk < val_tj){ // tk goal in the same row
+                        conflicts++;
+                    }
+                }
+            }
+        }
+    }
+    // column conflicts
+    for(size_t column = 0; column<boardWidth; column++){
+        for(size_t tj = column; tj<board_len - boardWidth; tj+=boardWidth){
+            int val_tj = board->getTile(tj);
+            if(val_tj%boardWidth == column) {
+                for (size_t tk = column + boardWidth; tk < board_len; tk += boardWidth) {
+                    int val_tk = board->getTile(tk);
+                    if(val_tk%boardWidth == column && val_tk < val_tj) conflicts++;
+                }
+            }
+
+        }
+    }
+    return 2*conflicts + manhattanHeuristic(board);
+}
+
+/* --------------------------------------------------------------*/
+
+
 
 struct Hash{
     size_t operator()(const State* state) const{
@@ -141,30 +229,19 @@ struct Equal{
 };
 
 
-// says if move [ 0 - 3 ] is possible from position [ 0 - 15 ]
-static const int possibleMoves[4][16] = {
-        {0, 0, 0,0, 1,1,1,1, 1, 1, 1, 1, 1, 1, 1, 1},        //  move up
-        {1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, // move down
-        {0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1}, //move left
-        {1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0} //move right
-};
-const short gobackmove[] = {1, 0, 3, 2};    // oposite move to move [ 0 - 3 ]
 
 // A* algorithm to find the best solution from initialState to goal
-// returns -1 if not solvable, else 0
-int AstarSearch(State* initialState, Board goal){
+void AstarSearch(State* initialState, Board goal, char heuristics){
     if(!isSolvable(initialState)) {
         cout << "Not Solvable!" << endl;
-        return -1;
-    }
-    cout << "Solving..." << endl;
+        return;
+    }  // Not solvable
+    cout << "Solving..." << endl ;
     auto cmp = [](State* left, State* right){return left->f_cost > right->f_cost;};
-
-    long visited = 0;
+    long long visited = 0;
     // open list for states to be checked
     priority_queue<State*, vector<State*>,decltype(cmp)> openList(cmp);
     // checked states
-
     unordered_set<const State*, Hash, Equal> closedList;
     // set iterator
     openList.push(initialState);
@@ -174,50 +251,46 @@ int AstarSearch(State* initialState, Board goal){
         State* q = openList.top();
         openList.pop();
         closedList.insert(q);
-        visited++;
-        if(q->board == goal) {
-            solutionFound(q, visited);
-            return 0;
-        }
+        ++visited;
+        if(q->board == goal) {solutionFound(q, visited);return;}
         int blankPos = getBlankPos(q);
-        if(blankPos == -1){
-            return -1;
-        }
+
         //-------------------------- generate successors --------------------------
         for(short move=0;move<4;move++){
             if(!possibleMoves[move][blankPos]) continue;   // move impossible
-            if(gobackmove[q->parentMove] != move){
+            if(gobackmove[move] != q->parentMove){  // is not going back to the parent
                 auto* successor = new State(q->board, q->g_cost + 1, 0, move, q);
                 successor->move(move, blankPos);
-
-                if(successor->board == goal){
+                if(successor->board == goal){   // successor == goal
+                    ++visited;
                     solutionFound(q, visited+1);
-                    return 0;
+                    return;
                 }
-
-                successor->f_cost = manhattanHeuristic(successor);
-
+                if(heuristics == 1) {
+                    successor->f_cost = linearConflict(successor);
+                }
+                else{
+                    successor->f_cost = manhattanHeuristic(successor);
+                }
                 auto search = closedList.find(successor);
-                if (search == closedList.end()) {
+                if (search == closedList.end()) {   // not checked yet
                     closedList.insert(successor);
                     openList.push(successor);
-                } else if (successor->f_cost < (*search)->f_cost) {
+                } else if (successor->f_cost < (*search)->f_cost) { // checked but f_cost is lower
                     openList.push(successor);
-                    closedList.insert(successor);
                     closedList.erase(*search);
+                    closedList.insert(successor);
                 } else delete successor;
             }
         }
     }
-    return -1;
 }
-
-
 
 int main() {
     Board goalBoard = 0x123456789abcdef0ULL;
-    Board randomState = 0x123457896bcdefa0ULL;
-    auto* state = new State(randomState, 0, 0, -1, nullptr);
-
-    AstarSearch(state, goalBoard);
+    auto* state = randomStateFromGoalGenerator(20);
+    cout << " Manhattan: " << endl;
+    AstarSearch(state, goalBoard, 0);
+    cout << " Linear Conflict: " << endl;
+    AstarSearch(state, goalBoard, 1);
 }
