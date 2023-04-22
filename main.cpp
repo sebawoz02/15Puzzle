@@ -1,97 +1,21 @@
 // Sebastian Woźniak - 15 puzzle
 
+
+#include "State.h"
 #include <iostream>
 #include <bits/stdc++.h>
 #include <cmath>
 #include <random>
 
-#define BITS_PER_TILE  4
-#define MASK 0x00000000000000000fULL    // mask is used to reset bits, which alows to extract the value of the tile
-#define Board unsigned long long
-
 using namespace std;
-
-int boardWidth = 4; // 15-puzzle is 4x4 and 8-puzzle is 3x3
-int board_len = boardWidth * boardWidth;
-double avgTime = 0.0;
 
 // says if move [ 0 - 3 ] is possible from position [ 0 - 15 ]
 static const int possibleMoves[4][16] = {
-        {0, 0, 0,0, 1,1,1,1, 1, 1, 1, 1, 1, 1, 1, 1},        //  move up
-        {1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, // move down
+        {0, 0, 0,0, 1,1,1,1, 1, 1, 1, 1, 1, 1, 1, 1},//  move up
         {0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1}, //move left
-        {1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0} //move right
+        {1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0} ,//move right
+        {1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0} // move down
 };
-const short gobackmove[] = {1, 0, 3, 2};    // oposite move to move [ 0 - 3 ]
-
-class State{
-public:
-    Board board;
-    unsigned short int g_cost;
-    unsigned short int f_cost;
-    char parentMove;
-    State* parent;
-
-    void setTile(int idx, int value);
-    int getTile(int idx) const;
-    void move(short mv, int blankspot);
-    void printBoard();
-
-    State(Board board, unsigned short int g, unsigned short int f, char parentMove, State *parent){
-        this->board = board;
-        this->f_cost = f;
-        this->g_cost = g;
-        this->parentMove = parentMove;
-        this->parent = parent;
-    }
-};
-
-void State::printBoard() {
-    for(int i = 0; i< board_len ; i++){
-        cout << getTile(i) << " ";
-        if(i%boardWidth == boardWidth-1) cout << endl;
-    }
-}
-
-// Returns board element under given index
-int State::getTile(int idx) const {
-    return (this->board >> ((boardWidth*boardWidth - 1 - idx)*BITS_PER_TILE)) & MASK;
-}
-
-// Sets the new value of the board element at the given index
-void State::setTile(int idx, int value){
-    this->board &= ~(MASK << ((boardWidth*boardWidth - 1 - idx) * BITS_PER_TILE));
-    this->board |= static_cast<Board>(value) << ((boardWidth*boardWidth - 1 - idx) * BITS_PER_TILE);
-}
-
-// Moves the blank spot
-// 0 - move up
-// 1 - move down
-// 2 - move left
-// 3 - move right
-void State::move(short mv, int blankspot){
-    if(mv == 0){
-        int val = getTile(blankspot-boardWidth);
-        setTile(blankspot, val);
-        setTile(blankspot - boardWidth, 0x0000);
-    }
-    else if(mv == 1){
-        int val = getTile(blankspot+boardWidth);
-        setTile(blankspot, val);
-        setTile(blankspot+boardWidth, 0x0000);
-    }
-    else if(mv == 2){
-        int val = getTile(blankspot-1);
-        setTile(blankspot, val);
-        setTile(blankspot-1, 0x0000);
-    }
-    else if(mv == 3){
-        int val = getTile(blankspot+1);
-        setTile(blankspot, val);
-        setTile(blankspot+1, 0x0000);
-    }
-
-}
 
 // Function calculates count of inversions in given state.
 int getInversionCount(State *state){
@@ -169,7 +93,6 @@ State* randomStateFromGoalGenerator(int k){
 // prints the solution
 int* printSolution(State* state, long visited, bool print_sol, short last_move, ::clock_t start){
     double time = (double) (::clock() - start) / CLOCKS_PER_SEC;
-    avgTime += time;
     cout << "[" << time <<"s]" <<endl;
     State* solution = state;
     unsigned int moves = 0;
@@ -275,9 +198,9 @@ int* AstarSearch(State* initialState, Board goal, bool print_sol){
         int blankPos = getBlankPos(q);
 
         //-------------------------- generate successors --------------------------
-        for(short move=0;move<4;move++){
+        for(char move=0;move<4;move++){
             if(!possibleMoves[move][blankPos]) continue;   // move impossible
-            if(gobackmove[move] != q->parentMove){  // is not going back to the parent
+            if(3 != q->parentMove + move){  // is not going back to the parent
                 auto* successor = new State(q->board, q->g_cost + 1, 0, move, q);
                 successor->move(move, blankPos);
                 if(successor->board == goal){   // successor == goal
@@ -304,7 +227,7 @@ int* AstarSearch(State* initialState, Board goal, bool print_sol){
 }
 
 int main() {
-    Board goalBoard = 0x123456789abcdef0ULL;
+    unsigned long long goalBoard = 0x123456789abcdef0ULL;
     auto *state = randomStateGenerator();
     state->printBoard();
     AstarSearch(state, goalBoard, true);
